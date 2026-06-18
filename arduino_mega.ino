@@ -35,9 +35,9 @@ void ISR_out() { out_pending = true; }
 
 // ---------------------------------------------------------------------------
 //  ACS712 pins  (60 mV/A)
-//  Index: 0=Turn  1=Hazard  2=Brake  3=Reverse  4=Horn  5=Headlight
+//  Index: 0=Reverse  1=Brake  2=Headlight  3=Hazard  4=Turn  5=Horn
 // ---------------------------------------------------------------------------
-const int ACS_PIN[6] = { A0, A1, A3, A5, A6, A7 };
+const int ACS_PIN[6] = { A0, A1, A2, A3, A4, A5 };
 
 const float ACS_SENS        = 0.060f;
 const float ACS_NOISE_FLOOR = 0.10f;
@@ -492,7 +492,7 @@ void printDebug() {
     Serial.println(F("  BMS    : no data yet"));
   }
 
-  const char* ch[6] = {"Turn","Hazard","Brake","Rev","Horn","Head"};
+  const char* ch[6] = {"Rev","Brake","Head","Hazard","Turn","Horn"};
   Serial.print(F("  ACS    :"));
   for (int i = 0; i < 6; i++) {
     Serial.print(F("  ")); Serial.print(ch[i]);

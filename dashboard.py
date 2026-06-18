@@ -34,7 +34,7 @@ SERIAL_BAUD    = 115200
 UPDATE_MS      = 250          # dashboard refresh interval
 RATED_RANGE_KM = 70           # from spec: 60-80 km range
 
-ACS_LABELS = ["Turn Signal", "Hazard", "Brake Light", "Reverse", "Horn", "Headlight"]
+ACS_LABELS = ["Reverse", "Brake Light", "Headlight", "Hazard", "Turn Signal", "Horn"]
 CELL_COUNT = 19
 
 # ---------------------------------------------------------------------------
