@@ -1,0 +1,20 @@
+# PDF documents (large binary, keep locally)
+*.pdf
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.env
+venv/
+.venv/
+
+# Arduino build artifacts
+build/
+*.elf
+*.hex
+*.map
+
+# OS
+.DS_Store
+Thumbs.db
