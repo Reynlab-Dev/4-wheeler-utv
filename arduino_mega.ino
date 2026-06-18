@@ -216,7 +216,7 @@ void parseBMSFrame(uint32_t id, uint8_t len, uint8_t *d) {
     case 0x04028001:   // Pack V / I / SOC
       if (len < 6) break;
       bms.packV = ((uint16_t)(d[0] << 8) | d[1]) / 10.0f;
-      bms.packA = (((uint16_t)(d[2] << 8) | d[3]) - 30000) / 10.0f;
+      bms.packA = (int16_t)((d[2] << 8) | d[3]) / 1000.0f;
       bms.soc   = ((uint16_t)(d[4] << 8) | d[5]) / 10.0f;
       bms.valid = true;
       break;
