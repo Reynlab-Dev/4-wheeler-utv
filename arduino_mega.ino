@@ -1,8 +1,8 @@
 // =============================================================================
 //  UTV ECU — Arduino Mega 2560
 //
-//  MCP2515 #1  canBMS  CS=10  INT=2   — DALY BMS CAN        @ 500 Kbps
-//  MCP2515 #2  canOUT  CS=9   INT=3   — Diagnostics / OBD-II @ 500 Kbps
+//  MCP2515 #1  canBMS  CS=9   INT=3   — DALY BMS CAN        @ 500 Kbps
+//  MCP2515 #2  canOUT  CS=10  INT=2   — Diagnostics / OBD-II @ 500 Kbps
 //
 //  Both modules share SPI bus: SCK=52, MOSI=51, MISO=50
 //  Both modules MUST have an 8 MHz crystal.
@@ -18,11 +18,11 @@
 // ---------------------------------------------------------------------------
 //  CAN controllers
 // ---------------------------------------------------------------------------
-#define BMS_CS   10
-#define OUT_CS    9
+#define BMS_CS    9
+#define OUT_CS   10
 
-#define BMS_INT   2    // Mega INT0
-#define OUT_INT   3    // Mega INT1
+#define BMS_INT   3    // Mega INT1
+#define OUT_INT   2    // Mega INT0
 
 MCP_CAN canBMS(BMS_CS);
 MCP_CAN canOUT(OUT_CS);
