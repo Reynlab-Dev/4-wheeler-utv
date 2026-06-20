@@ -18,6 +18,7 @@ Open in Chromium fullscreen (19" monitor):
 
 import argparse
 import json
+import math
 import threading
 import time
 import serial
@@ -31,8 +32,8 @@ import plotly.graph_objects as go
 # ---------------------------------------------------------------------------
 SERIAL_PORT    = "/dev/ttyACM0"
 SERIAL_BAUD    = 115200
-UPDATE_MS      = 250          # dashboard refresh interval
-RATED_RANGE_KM = 70           # from spec: 60-80 km range
+UPDATE_MS      = 500          # 2 Hz — lighter on 4GB Ubuntu
+RATED_RANGE_KM = 70
 
 ACS_LABELS = ["Reverse", "Brake Light", "Headlight", "Hazard", "Turn Signal", "Horn"]
 CELL_COUNT = 19
@@ -89,8 +90,6 @@ def serial_reader(port: str, baud: int):
 #  Dash app
 # ---------------------------------------------------------------------------
 app = dash.Dash(__name__, title="UTV EV Telemetry")
-
-# Suppress callback exceptions for dynamic layout
 app.config.suppress_callback_exceptions = True
 
 # ---- Colour palette ----
@@ -103,6 +102,7 @@ RED     = "#f85149"
 BLUE    = "#58a6ff"
 WHITE   = "#e6edf3"
 GREY    = "#8b949e"
+TRACK   = "#21262d"
 
 def card(children, style=None):
     base = {
@@ -122,13 +122,70 @@ def label(text):
         "marginBottom": "4px",
     })
 
+# ---------------------------------------------------------------------------
+#  SVG Arc Gauge — pure SVG, no Plotly, always renders
+# ---------------------------------------------------------------------------
+def make_svg_gauge(value, vmin, vmax, disp_str, color):
+    """
+    Semicircle arc gauge rendered as inline SVG via dcc.Markdown.
+    Arc sweeps clockwise from left (vmin) to right (vmax) through top.
+    """
+    cx, cy, r, sw = 100, 80, 66, 13
+
+    value = max(vmin, min(vmax, float(value)))
+    span  = float(vmax - vmin)
+    f     = (value - vmin) / span if span != 0 else 0.0
+    f     = max(0.0, min(1.0, f))
+
+    lx, ly = cx - r, cy   # left  (vmin end)
+    rx, ry = cx + r, cy   # right (vmax end)
+
+    track_d = f"M {lx} {ly} A {r} {r} 0 0 1 {rx} {ry}"
+
+    val_path = ""
+    if f > 0.005:
+        if f >= 0.995:
+            vx, vy = rx - 0.1, float(ry)
+        else:
+            a   = math.radians(180.0 * (1.0 - f))
+            vx  = cx + r * math.cos(a)
+            vy  = cy - r * math.sin(a)
+        val_path = (
+            f'<path d="M {lx} {ly} A {r} {r} 0 0 1 {vx:.2f} {vy:.2f}" '
+            f'fill="none" stroke="{color}" stroke-width="{sw}" stroke-linecap="round"/>'
+        )
+
+    # Format min/max labels
+    def fmt_lim(v):
+        return str(int(v)) if v == int(v) else f"{v:.1f}"
+
+    svg = (
+        f'<svg viewBox="0 0 200 115" xmlns="http://www.w3.org/2000/svg" '
+        f'style="width:100%;height:145px;display:block">'
+        f'<path d="{track_d}" fill="none" stroke="{TRACK}" '
+        f'stroke-width="{sw}" stroke-linecap="round"/>'
+        f'{val_path}'
+        f'<text x="{cx}" y="{cy + 26}" text-anchor="middle" '
+        f'fill="{WHITE}" font-size="22" font-weight="bold" font-family="monospace">'
+        f'{disp_str}</text>'
+        f'<text x="{lx + 2}" y="{cy + 16}" text-anchor="start" '
+        f'fill="{GREY}" font-size="9" font-family="monospace">{fmt_lim(vmin)}</text>'
+        f'<text x="{rx - 2}" y="{cy + 16}" text-anchor="end" '
+        f'fill="{GREY}" font-size="9" font-family="monospace">{fmt_lim(vmax)}</text>'
+        f'</svg>'
+    )
+    return dcc.Markdown(svg, dangerously_allow_html=True)
+
+# ---------------------------------------------------------------------------
+#  Layout
+# ---------------------------------------------------------------------------
 app.layout = html.Div([
     dcc.Interval(id="tick", interval=UPDATE_MS, n_intervals=0),
 
     # ---- Header ----
     html.Div([
         html.Span("UTV EV Platform", style={
-            "fontSize": "20px", "fontWeight": "bold", "color": WHITE
+            "fontSize": "20px", "fontWeight": "bold", "color": WHITE,
         }),
         html.Span(" — Live Telemetry", style={"color": GREY, "fontSize": "16px"}),
         html.Span(id="status-badge", style={
@@ -143,31 +200,32 @@ app.layout = html.Div([
     # ---- Fault banner ----
     html.Div(id="fault-banner"),
 
-    # ---- Row 1: Big numbers ----
+    # ---- Row 1: SVG Arc Gauges ----
     html.Div([
-        card([label("State of Charge"), dcc.Graph(id="gauge-soc", style={"height": "160px"}, config={"displayModeBar": False})],
-             style={"flex": "1"}),
-        card([label("Pack Voltage"), dcc.Graph(id="gauge-pv",  style={"height": "160px"}, config={"displayModeBar": False})],
-             style={"flex": "1"}),
-        card([label("Pack Current"), dcc.Graph(id="gauge-pa",  style={"height": "160px"}, config={"displayModeBar": False})],
-             style={"flex": "1"}),
-        card([label("Power"), dcc.Graph(id="gauge-pw",  style={"height": "160px"}, config={"displayModeBar": False})],
-             style={"flex": "1"}),
-        card([label("Est. Range"), html.Div(id="range-val", style={
-            "fontSize": "52px", "fontWeight": "bold", "color": GREEN,
-            "textAlign": "center", "lineHeight": "120px",
-        })], style={"flex": "0.7"}),
+        card([label("State of Charge"), html.Div(id="gauge-soc")], style={"flex": "1"}),
+        card([label("Pack Voltage"),    html.Div(id="gauge-pv")],  style={"flex": "1"}),
+        card([label("Pack Current"),    html.Div(id="gauge-pa")],  style={"flex": "1"}),
+        card([label("Power"),           html.Div(id="gauge-pw")],  style={"flex": "1"}),
+        card([
+            label("Est. Range"),
+            html.Div(id="range-val", style={
+                "fontSize": "52px", "fontWeight": "bold", "color": GREEN,
+                "textAlign": "center", "paddingTop": "28px",
+            }),
+        ], style={"flex": "0.7"}),
     ], style={"display": "flex", "gap": "8px", "marginBottom": "8px"}),
 
     # ---- Row 2: Cell voltages + Temperatures ----
     html.Div([
         card([
             label("Cell Voltages (19 cells)"),
-            dcc.Graph(id="chart-cells", style={"height": "180px"}, config={"displayModeBar": False}),
+            dcc.Graph(id="chart-cells", style={"height": "180px"},
+                      config={"displayModeBar": False}),
         ], style={"flex": "3"}),
         card([
             label("Temperatures"),
-            dcc.Graph(id="chart-temps", style={"height": "180px"}, config={"displayModeBar": False}),
+            dcc.Graph(id="chart-temps", style={"height": "180px"},
+                      config={"displayModeBar": False}),
         ], style={"flex": "1"}),
     ], style={"display": "flex", "gap": "8px", "marginBottom": "8px"}),
 
@@ -175,7 +233,8 @@ app.layout = html.Div([
     html.Div([
         card([
             label("Circuit Currents (ACS712)"),
-            dcc.Graph(id="chart-acs", style={"height": "180px"}, config={"displayModeBar": False}),
+            dcc.Graph(id="chart-acs", style={"height": "180px"},
+                      config={"displayModeBar": False}),
         ], style={"flex": "3"}),
         card([
             label("BMS Status"),
@@ -189,42 +248,16 @@ app.layout = html.Div([
 })
 
 # ---------------------------------------------------------------------------
-#  Callbacks
+#  Callback
 # ---------------------------------------------------------------------------
-def make_gauge(value, vmin, vmax, unit, color=BLUE, threshold_warn=None, threshold_crit=None):
-    fig = go.Figure(go.Indicator(
-        mode="gauge+number",
-        value=value,
-        number={"suffix": f" {unit}", "font": {"color": WHITE, "size": 22}},
-        gauge={
-            "axis": {"range": [vmin, vmax], "tickcolor": GREY,
-                     "tickfont": {"color": GREY, "size": 9}},
-            "bar": {"color": color},
-            "bgcolor": BG,
-            "bordercolor": BORDER,
-            "steps": [{"range": [vmin, vmax], "color": "#21262d"}],
-            "threshold": {
-                "line": {"color": RED, "width": 2},
-                "thickness": 0.75,
-                "value": threshold_crit or vmax,
-            } if threshold_crit else {},
-        },
-    ))
-    fig.update_layout(
-        margin=dict(l=10, r=10, t=10, b=10),
-        paper_bgcolor=CARD, plot_bgcolor=CARD, font_color=WHITE,
-        height=160,
-    )
-    return fig
-
 @app.callback(
     Output("status-badge", "children"),
     Output("status-badge", "style"),
     Output("fault-banner", "children"),
-    Output("gauge-soc",    "figure"),
-    Output("gauge-pv",     "figure"),
-    Output("gauge-pa",     "figure"),
-    Output("gauge-pw",     "figure"),
+    Output("gauge-soc",    "children"),
+    Output("gauge-pv",     "children"),
+    Output("gauge-pa",     "children"),
+    Output("gauge-pw",     "children"),
     Output("range-val",    "children"),
     Output("chart-cells",  "figure"),
     Output("chart-temps",  "figure"),
@@ -236,7 +269,7 @@ def update(_):
     d = get_data()
 
     # ---- Connection badge ----
-    stale = (time.time() - d["last_rx"]) > 3.0
+    stale     = (time.time() - d["last_rx"]) > 3.0
     connected = d["connected"] and not stale
     badge_text  = "● LIVE" if connected else "● NO SIGNAL"
     badge_style = {
@@ -252,30 +285,31 @@ def update(_):
         style={
             "background": RED, "color": WHITE, "fontWeight": "bold",
             "textAlign": "center", "padding": "8px",
-            "borderRadius": "6px", "marginBottom": "8px",
-            "fontSize": "16px",
+            "borderRadius": "6px", "marginBottom": "8px", "fontSize": "16px",
         }
     ) if d["flt"] else html.Div()
 
-    # ---- Gauges ----
+    # ---- SVG gauges ----
     soc_color = GREEN if d["soc"] > 20 else (YELLOW if d["soc"] > 10 else RED)
-    g_soc = make_gauge(d["soc"],  0, 100, "%",  soc_color)
-    g_pv  = make_gauge(d["pv"],  40,  75, "V",  BLUE)
-    g_pa  = make_gauge(d["pa"], -20, 120, "A",  YELLOW if d["pa"] > 80 else BLUE)
-    g_pw  = make_gauge(d["pw"] / 1000, 0, 5, "kW", GREEN)
+    pa_color  = YELLOW if abs(d["pa"]) > 80 else BLUE
+
+    g_soc = make_svg_gauge(d["soc"],          0,   100, f"{d['soc']:.0f} %",        soc_color)
+    g_pv  = make_svg_gauge(d["pv"],          40,    75, f"{d['pv']:.1f} V",         BLUE)
+    g_pa  = make_svg_gauge(d["pa"],         -20,   120, f"{d['pa']:.1f} A",         pa_color)
+    g_pw  = make_svg_gauge(d["pw"] / 1000,    0,     5, f"{d['pw']/1000:.2f} kW",   GREEN)
 
     # ---- Range estimate ----
     range_km  = round(d["soc"] / 100.0 * RATED_RANGE_KM, 1)
-    range_txt = f"{range_km} km"
+    range_txt = f"{range_km}\nkm"
 
     # ---- Cell voltages bar chart ----
     cv = d["cv"]
     cell_colors = []
     for v in cv:
-        if   v < 3.0:   cell_colors.append(RED)
-        elif v < 3.2:   cell_colors.append(YELLOW)
-        elif v > 3.65:  cell_colors.append(RED)
-        else:           cell_colors.append(GREEN)
+        if   v < 3.0:  cell_colors.append(RED)
+        elif v < 3.2:  cell_colors.append(YELLOW)
+        elif v > 3.65: cell_colors.append(RED)
+        else:          cell_colors.append(GREEN)
 
     fig_cells = go.Figure(go.Bar(
         x=[f"C{i+1}" for i in range(CELL_COUNT)],
@@ -293,7 +327,6 @@ def update(_):
         xaxis=dict(tickfont={"color": GREY, "size": 9}),
         height=180, showlegend=False,
     )
-    # Min/max reference lines
     fig_cells.add_hline(y=3.0,  line_dash="dot", line_color=RED,    line_width=1)
     fig_cells.add_hline(y=3.65, line_dash="dot", line_color=RED,    line_width=1)
     fig_cells.add_hline(y=3.2,  line_dash="dot", line_color=YELLOW, line_width=1)
@@ -301,15 +334,11 @@ def update(_):
     # ---- Temperatures bar chart ----
     temp_labels = ["NTC 1", "NTC 2", "NTC 3", "NTC 4"]
     temp_vals   = [d[k] for k in ("t0", "t1", "t2", "t3")]
-    temp_valid  = [v for v in temp_vals if v != -99]
-    temp_colors = [RED if v > 45 else YELLOW if v > 35 else GREEN
-                   for v in temp_vals]
 
     fig_temps = go.Figure(go.Bar(
         x=temp_labels,
         y=[v if v != -99 else 0 for v in temp_vals],
-        marker_color=[RED if v > 45 else YELLOW if v > 35 else BLUE
-                      for v in temp_vals],
+        marker_color=[RED if v > 45 else YELLOW if v > 35 else BLUE for v in temp_vals],
         text=[f"{v}°C" if v != -99 else "N/A" for v in temp_vals],
         textposition="outside",
         textfont={"size": 10, "color": WHITE},
@@ -340,30 +369,31 @@ def update(_):
         yaxis=dict(range=[0, 15], gridcolor=BORDER,
                    tickcolor=GREY, tickfont={"color": GREY, "size": 9},
                    ticksuffix=" A"),
-        xaxis=dict(tickfont={"color": GREY, "size": 9},
-                   tickangle=-15),
+        xaxis=dict(tickfont={"color": GREY, "size": 9}, tickangle=-15),
         height=180, showlegend=False,
     )
 
     # ---- BMS status panel ----
-    def stat_row(label_txt, value_txt, val_color=WHITE):
+    def stat_row(lbl, val, col=WHITE):
         return html.Div([
-            html.Span(label_txt, style={"color": GREY, "fontSize": "11px", "width": "90px", "display": "inline-block"}),
-            html.Span(value_txt, style={"color": val_color, "fontSize": "13px", "fontWeight": "bold"}),
+            html.Span(lbl, style={"color": GREY, "fontSize": "11px",
+                                  "width": "90px", "display": "inline-block"}),
+            html.Span(val, style={"color": col, "fontSize": "13px",
+                                  "fontWeight": "bold"}),
         ], style={"marginBottom": "6px"})
 
     mos_color = GREEN if d["mos"] == 1 else YELLOW
     bms_panel = html.Div([
-        stat_row("Pack V",    f"{d['pv']:.1f} V"),
-        stat_row("Cell Min",  f"{d['cmin']:.3f} V  [#{d['cmni']}]",
+        stat_row("Pack V",     f"{d['pv']:.1f} V"),
+        stat_row("Cell Min",   f"{d['cmin']:.3f} V  [#{d['cmni']}]",
                  RED if d["cmin"] < 3.0 else YELLOW if d["cmin"] < 3.2 else GREEN),
-        stat_row("Cell Max",  f"{d['cmax']:.3f} V  [#{d['cmxi']}]",
+        stat_row("Cell Max",   f"{d['cmax']:.3f} V  [#{d['cmxi']}]",
                  RED if d["cmax"] > 3.65 else GREEN),
-        stat_row("Cycles",    str(d["cyc"])),
+        stat_row("Cycles",     str(d["cyc"])),
         stat_row("Charge MOS", "ON" if d["mos"] == 1 else "OFF", mos_color),
-        stat_row("Faults",    "NONE" if not d["flt"] else "ACTIVE",
+        stat_row("Faults",     "NONE" if not d["flt"] else "ACTIVE",
                  GREEN if not d["flt"] else RED),
-        stat_row("BMS Data",  "Valid" if d["vld"] else "Waiting",
+        stat_row("BMS Data",   "Valid" if d["vld"] else "Waiting",
                  GREEN if d["vld"] else YELLOW),
     ])
 
@@ -376,16 +406,15 @@ def update(_):
 # ---------------------------------------------------------------------------
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--port", default=SERIAL_PORT,
+    parser.add_argument("--port",         default=SERIAL_PORT,
                         help="Serial port e.g. /dev/ttyACM0")
-    parser.add_argument("--baud", default=SERIAL_BAUD, type=int)
-    parser.add_argument("--host", default="0.0.0.0",
+    parser.add_argument("--baud",         default=SERIAL_BAUD, type=int)
+    parser.add_argument("--host",         default="0.0.0.0",
                         help="Host to serve dashboard (0.0.0.0 = all interfaces)")
     parser.add_argument("--browser-port", default=8050, type=int)
     args = parser.parse_args()
 
-    t = threading.Thread(target=serial_reader, args=(args.port, args.baud),
-                         daemon=True)
+    t = threading.Thread(target=serial_reader, args=(args.port, args.baud), daemon=True)
     t.start()
 
     print(f"\n  Dashboard: http://localhost:{args.browser_port}")
