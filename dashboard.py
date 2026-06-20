@@ -117,19 +117,16 @@ def card(children, style=None):
 
 def label(text):
     return html.Div(text, style={
-        "color": GREY, "fontSize": "11px",
+        "color": WHITE, "fontSize": "11px",
         "textTransform": "uppercase", "letterSpacing": "1px",
         "marginBottom": "4px",
     })
 
 # ---------------------------------------------------------------------------
-#  SVG Arc Gauge — pure SVG, no Plotly, always renders
+#  SVG Arc Gauge — native Dash SVG components, always renders
 # ---------------------------------------------------------------------------
 def make_svg_gauge(value, vmin, vmax, disp_str, color):
-    """
-    Semicircle arc gauge rendered as inline SVG via dcc.Markdown.
-    Arc sweeps clockwise from left (vmin) to right (vmax) through top.
-    """
+    """Semicircle arc gauge using html.Svg — no Plotly, no raw HTML injection."""
     cx, cy, r, sw = 100, 80, 66, 13
 
     value = max(vmin, min(vmax, float(value)))
@@ -137,44 +134,50 @@ def make_svg_gauge(value, vmin, vmax, disp_str, color):
     f     = (value - vmin) / span if span != 0 else 0.0
     f     = max(0.0, min(1.0, f))
 
-    lx, ly = cx - r, cy   # left  (vmin end)
-    rx, ry = cx + r, cy   # right (vmax end)
+    lx, ly = cx - r, cy
+    rx, ry = cx + r, cy
 
     track_d = f"M {lx} {ly} A {r} {r} 0 0 1 {rx} {ry}"
 
-    val_path = ""
+    def fmt_lim(v):
+        return str(int(v)) if v == int(v) else f"{v:.1f}"
+
+    elements = [
+        html.Path(d=track_d, fill="none", stroke=TRACK,
+                  **{"stroke-width": str(sw), "stroke-linecap": "round"}),
+    ]
+
     if f > 0.005:
         if f >= 0.995:
             vx, vy = rx - 0.1, float(ry)
         else:
-            a   = math.radians(180.0 * (1.0 - f))
-            vx  = cx + r * math.cos(a)
-            vy  = cy - r * math.sin(a)
-        val_path = (
-            f'<path d="M {lx} {ly} A {r} {r} 0 0 1 {vx:.2f} {vy:.2f}" '
-            f'fill="none" stroke="{color}" stroke-width="{sw}" stroke-linecap="round"/>'
+            a  = math.radians(180.0 * (1.0 - f))
+            vx = cx + r * math.cos(a)
+            vy = cy - r * math.sin(a)
+        val_d = f"M {lx} {ly} A {r} {r} 0 0 1 {vx:.2f} {vy:.2f}"
+        elements.append(
+            html.Path(d=val_d, fill="none", stroke=color,
+                      **{"stroke-width": str(sw), "stroke-linecap": "round"})
         )
 
-    # Format min/max labels
-    def fmt_lim(v):
-        return str(int(v)) if v == int(v) else f"{v:.1f}"
+    elements += [
+        html.Text(disp_str,
+                  x=str(cx), y=str(cy + 26), fill=WHITE,
+                  **{"text-anchor": "middle", "font-size": "22",
+                     "font-weight": "bold", "font-family": "monospace"}),
+        html.Text(fmt_lim(vmin),
+                  x=str(lx + 2), y=str(cy + 16), fill=GREY,
+                  **{"text-anchor": "start", "font-size": "9",
+                     "font-family": "monospace"}),
+        html.Text(fmt_lim(vmax),
+                  x=str(rx - 2), y=str(cy + 16), fill=GREY,
+                  **{"text-anchor": "end", "font-size": "9",
+                     "font-family": "monospace"}),
+    ]
 
-    svg = (
-        f'<svg viewBox="0 0 200 115" xmlns="http://www.w3.org/2000/svg" '
-        f'style="width:100%;height:145px;display:block">'
-        f'<path d="{track_d}" fill="none" stroke="{TRACK}" '
-        f'stroke-width="{sw}" stroke-linecap="round"/>'
-        f'{val_path}'
-        f'<text x="{cx}" y="{cy + 26}" text-anchor="middle" '
-        f'fill="{WHITE}" font-size="22" font-weight="bold" font-family="monospace">'
-        f'{disp_str}</text>'
-        f'<text x="{lx + 2}" y="{cy + 16}" text-anchor="start" '
-        f'fill="{GREY}" font-size="9" font-family="monospace">{fmt_lim(vmin)}</text>'
-        f'<text x="{rx - 2}" y="{cy + 16}" text-anchor="end" '
-        f'fill="{GREY}" font-size="9" font-family="monospace">{fmt_lim(vmax)}</text>'
-        f'</svg>'
-    )
-    return dcc.Markdown(svg, dangerously_allow_html=True)
+    return html.Svg(elements,
+                    viewBox="0 0 200 115",
+                    style={"width": "100%", "height": "145px", "display": "block"})
 
 # ---------------------------------------------------------------------------
 #  Layout
