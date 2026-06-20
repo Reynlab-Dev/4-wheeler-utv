@@ -310,7 +310,7 @@ class Dashboard(QMainWindow):
         r1.setSpacing(6)
         self.card_soc   = MetricCard("State of Charge", "%",   0,   100, GREEN)
         self.card_pv    = MetricCard("Pack Voltage",    "V",  40,    75, BLUE)
-        self.card_pa    = MetricCard("Pack Current",    "A",   0,     8, BLUE)
+        self.card_pa    = MetricCard("Pack Current",    "A",   0,     6, BLUE)
         self.card_pw    = MetricCard("Power",           "kW",  0,     5, GREEN)
         self.card_range = MetricCard("Est. Range",      "km",  0,    70, GREEN)
         for c in (self.card_soc, self.card_pv, self.card_pa, self.card_pw, self.card_range):
@@ -397,7 +397,7 @@ class Dashboard(QMainWindow):
 
         # Metric cards
         soc_c = GREEN if d["soc"] > 20 else (YELLOW if d["soc"] > 10 else RED)
-        pa_c  = RED if abs(d["pa"]) > 7 else YELLOW if abs(d["pa"]) > 5 else BLUE
+        pa_c  = RED if abs(d["pa"]) > 5.5 else YELLOW if abs(d["pa"]) > 4 else BLUE
 
         self.card_soc.update_value(d["soc"],  f"{d['soc']:.0f} %",        soc_c)
         self.card_pv.update_value(d["pv"],    f"{d['pv']:.1f} V",         BLUE)
