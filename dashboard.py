@@ -195,8 +195,10 @@ class MetricCard(QFrame):
 #  Bar chart widget (pyqtgraph)
 # ---------------------------------------------------------------------------
 class BarChart(QWidget):
-    def __init__(self, labels, yrange=(0, 15), ylabel=""):
+    def __init__(self, labels, yrange=(0, 15), ylabel="", decimals=2):
         super().__init__()
+        self.yrange   = yrange
+        self.decimals = decimals
         lay = QVBoxLayout(self)
         lay.setContentsMargins(0, 0, 0, 0)
 
@@ -208,7 +210,7 @@ class BarChart(QWidget):
         self.plot.getAxis("bottom").setTextPen(GREY)
         self.plot.getAxis("left").setPen(BORDER)
         self.plot.getAxis("bottom").setPen(BORDER)
-        self.plot.setYRange(*yrange, padding=0.1)
+        self.plot.setYRange(*yrange, padding=0.15)
         self.plot.setLabel("left", ylabel, color=GREY)
 
         n = len(labels)
@@ -222,11 +224,26 @@ class BarChart(QWidget):
             brushes=[hex_to_pg(BLUE)] * n
         )
         self.plot.addItem(self.bars)
+
+        # Value labels above each bar
+        self.val_texts = []
+        for i in range(n):
+            t = pg.TextItem(text="", color=WHITE, anchor=(0.5, 1.0))
+            t.setFont(QFont("monospace", 8, QFont.Bold))
+            t.setPos(i, 0)
+            self.plot.addItem(t)
+            self.val_texts.append(t)
+
         lay.addWidget(self.plot)
 
     def update_bars(self, heights, colors):
+        h = np.array(heights, dtype=float)
         brushes = [pg.mkBrush(*hex_to_pg(c)) for c in colors]
-        self.bars.setOpts(height=np.array(heights, dtype=float), brushes=brushes)
+        self.bars.setOpts(height=h, brushes=brushes)
+        top = self.yrange[1]
+        for i, (v, t) in enumerate(zip(h, self.val_texts)):
+            t.setText(f"{v:.{self.decimals}f}")
+            t.setPos(i, min(v, top * 0.97))
 
 # ---------------------------------------------------------------------------
 #  BMS Status panel
@@ -330,7 +347,7 @@ class Dashboard(QMainWindow):
         cf_lay.addWidget(cf_hdr)
         self.cell_chart = BarChart(
             [f"C{i+1}" for i in range(CELL_COUNT)],
-            yrange=(3.0, 3.8), ylabel="V"
+            yrange=(3.0, 3.8), ylabel="V", decimals=3
         )
         cf_lay.addWidget(self.cell_chart)
 
@@ -341,7 +358,7 @@ class Dashboard(QMainWindow):
         tf_hdr = QLabel("TEMPERATURES")
         tf_hdr.setStyleSheet(f"color:{WHITE};font-size:10px;letter-spacing:1px;")
         tf_lay.addWidget(tf_hdr)
-        self.temp_chart = BarChart(TEMP_LABELS, yrange=(0, 60), ylabel="°C")
+        self.temp_chart = BarChart(TEMP_LABELS, yrange=(0, 60), ylabel="°C", decimals=0)
         tf_lay.addWidget(self.temp_chart)
 
         r2.addWidget(cell_frame, 3)
@@ -359,7 +376,7 @@ class Dashboard(QMainWindow):
         af_hdr = QLabel("CIRCUIT CURRENTS (ACS712)")
         af_hdr.setStyleSheet(f"color:{WHITE};font-size:10px;letter-spacing:1px;")
         af_lay.addWidget(af_hdr)
-        self.acs_chart = BarChart(ACS_LABELS, yrange=(0, 15), ylabel="A")
+        self.acs_chart = BarChart(ACS_LABELS, yrange=(0, 15), ylabel="A", decimals=2)
         af_lay.addWidget(self.acs_chart)
 
         self.bms_status = BMSStatus()
