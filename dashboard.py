@@ -195,7 +195,7 @@ def make_gauge(value, vmin, vmax, unit, color=BLUE, threshold_warn=None, thresho
     fig = go.Figure(go.Indicator(
         mode="gauge+number",
         value=value,
-        number={"suffix": f" {unit}", "font": {"color": WHITE, "size": 22}},
+        number={"suffix": f" {unit}", "font": {"color": "#ffffff", "size": 24}},
         gauge={
             "axis": {"range": [vmin, vmax], "tickcolor": GREY,
                      "tickfont": {"color": GREY, "size": 9}},
